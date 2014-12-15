@@ -206,7 +206,7 @@ ETree = function(data, parent) {
 	this.id = Random.id();
 	this.get = function(context) {
 		return _.map(this.data, function(d) {
-			if (d instanceof ETree) return d.get();
+			if (d instanceof ETree) return d.get(context);
 			else return expSimple.call(context, d);
 		});
 	}

@@ -62,8 +62,7 @@ allFuncs = [{
 	args: 2
 }];
 
-var separators = ['\\\+', '-', '\\*', '/'],
-	tokens = [{
+var tokens = [{
 		regex: /^\d+\.?\d*$/,
 		func: function(t) {
 			return this.makeLeaf(parseFloat(t[0], 10));
@@ -82,7 +81,7 @@ var separators = ['\\\+', '-', '\\*', '/'],
 		func: function(t) {
 			var op = _.find(allOps, function(o) {return new RegExp(o.moniker).exec(t);});
 			return op ? {
-				operator: op.func,
+				op: op.func,
 				args: op.args
 			} : null;
 		}
@@ -90,8 +89,8 @@ var separators = ['\\\+', '-', '\\*', '/'],
 	{
 		regex: new RegExp('^' + _.pluck(allFuncs, 'moniker').join('|') + '$'),
 		func: function(t) {
-			var thisFunc = _.find(allOps, function(f) {return new RegExp(f.moniker).exec(t);});
-			return op ? {
+			var thisFunc = _.find(allFuncs, function(f) {return new RegExp(f.moniker).exec(t);});
+			return thisFunc ? {
 				func: thisFunc.func,
 				args: thisFunc.args
 			} : null;
@@ -119,6 +118,10 @@ Genetic = function(seq) {
 		var theseArgs = Array.prototype.slice.call(arguments);
 		extendedArgs = [_this].concat(theseArgs);
 		return construct(FNode, extendedArgs);
+	}
+
+	this.makeNodeArray = function(content) {
+		return new NodeArray(_this, content);
 	}
 
 	this.buildNode = function() {
@@ -191,6 +194,20 @@ Leaf = function(owner, content) {
 
 }
 
+NodeArray = function(owner, content) {
+
+	var _this = this;
+
+	this.parent = null;
+	this.owner = owner;
+
+	this.content = _.reduce(content, function(newContent, c) {
+		if (c instanceof NodeArray) return newContent.concat(c.content);
+		else return newContent.concat(c);
+	}, []);
+
+}
+
 function funcMap(func, children) {
 	var _this = this,
 		zippedArray = _.zip.apply(null, children);
@@ -204,14 +221,18 @@ ETree = function(data, parent) {
 	this.data = data;
 	this.parent = parent;
 	this.id = Random.id();
-	this.get = function(context) {
-		return _.map(this.data, function(d) {
-			if (d instanceof ETree) return d.get(context);
-			else return expSimple.call(context, d);
-		});
-	}
 
 };
+
+ETree.prototype.get = function(context) {
+	var ret = _.map(this.data, function(d) {
+		if (d instanceof ETree) {
+			return d.get(context);
+		}
+		else return expSimple.call(context, d);
+	});
+	return ret.length > 1 ? ret : ret[0];
+}
 
 Genetic.prototype.expParse = function(exp) {
 	var tree = new ETree([], null),
@@ -247,12 +268,45 @@ Genetic.prototype.expParse = function(exp) {
 	scheme = tree.get(this);
 	return scheme;
 	ind = 0;
-	schemeConvert(tree);
+	schemeConvert.call(this, scheme);
 };
 
 schemeConvert = function(scheme) {
 
-	var ind = 0;
+	var ind = 0,
+		l = scheme.length;
+	for (ind = 0; ind < l; ind++) {
+		if (scheme[i] instanceof Array) {
+			scheme[i] = schemeConvert(scheme[i]);
+		}
+	}
+	for (ind = 0; ind < scheme.length;) {
+		if (scheme[i].op === null && scheme[i].args === 0) {
+			Array.prototype.splice.apply(scheme, [i - 1, 3].concat(this.makeNodeArray([scheme[i-1], scheme[i+1]])));
+			ind--;
+		}
+		else ind++;
+	}
+	for (ind = 0; ind < l; ind++) {
+		if (scheme[i].op) {
+			if (!((scheme[i-1] instanceof FNode || scheme[i-1] instanceof Leaf) &&
+				  (scheme[i+1] instanceof FNode || scheme[i+1] instanceof Leaf)))
+				thrown new Meteor.Error('bad_syntax', 'Cannot understand syntax.', scheme.slice(i-1, i+2));
+			else {
+
+			}
+		}
+		else if (scheme[i].func) {
+
+		}		
+	}
+		else if (scheme[i] instanceof FNode) {
+
+		}
+		else if (scheme[i] instanceof Leaf) {
+
+		}
+	}
 
 }
 
@@ -261,8 +315,8 @@ expSimple = function(exp) {
 
 	var theseTokens = exp.split(new RegExp('(' + _.pluck(allOps, 'moniker').join('|') + ')', 'g')).filter(function(s) {
 		return s.length;
-	});
-	return _.map(theseTokens, convertToken.bind(this));
+	}), ret = _.map(theseTokens, convertToken.bind(this));
+	return ret.length > 1 ? ret : ret[0];
 
 }
 
@@ -270,5 +324,6 @@ convertToken = function(token) {
 	var thisToken = _.find(tokens, function(t) {
 		return t.regex.exec(token);
 	});
-	return thisToken ? thisToken.func.call(this, thisToken.regex.exec(token)) : {error: 'unknown'};
+	if (!thisToken) thrown new Meteor.Error('unknown_token', 'Cannot recognise the token', token);
+	return thisToken.func.call(this, thisToken.regex.exec(token));
 }
